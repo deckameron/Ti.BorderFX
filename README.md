@@ -7,7 +7,11 @@ Ti.BorderFX decorates any `Ti.UI.View` (or subclass — buttons, image views, wh
 ![Titanium](https://img.shields.io/badge/Titanium-13.2.0+-red.svg) ![Platform](https://img.shields.io/badge/platform-iOS-lightgrey.svg) ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg)
 
 
-![Demo do BorderFX](assets/demo.gif)
+<p align="center">
+  <img src="https://github.com/deckameron/Ti.BorderFX/blob/main/assets/video.gif?raw=true"
+       width="300"
+       alt="video" />
+</p>
 
 ---
 
