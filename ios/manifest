@@ -1,0 +1,19 @@
+#
+# this is your module manifest and used by Titanium
+# during compilation, packaging, distribution, etc.
+#
+version: 1.0.0
+apiversion: 2
+architectures: arm64 x86_64
+mac: false
+description: Ti.BorderFX
+author: Douglas Alves
+license: MIT License
+copyright: Copyright (c) 2026 by Douglas Alves
+
+# these should not be edited
+name: Ti.BorderFX
+moduleid: ti.borderfx
+guid: d805b337-e552-4c8b-ad51-a2e66b86d0f3
+platform: iphone
+minsdk: 13.2.0.GA
