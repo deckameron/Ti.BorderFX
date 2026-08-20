@@ -1,10 +1,10 @@
 # Ti.BorderFX
 
-> Native iOS module that adds animated, GPU-accelerated gradient borders — "border beam" effects — to any existing Titanium view.
+> Native iOS & Android module that adds animated, GPU-accelerated gradient borders — "border beam" effects — to any existing Titanium view.
 
 Ti.BorderFX decorates any `Ti.UI.View` (or subclass — buttons, image views, whatever) with an animated conic-gradient border: a short glowing segment that chases around the edge, a full ring of color that spins, or both combined. It's a **decorator**, not a new view type — you attach it to a view you already created, nothing gets wrapped or replaced, and it tracks size and corner-radius changes automatically, including during animated resizes.
 
-![Titanium](https://img.shields.io/badge/Titanium-13.2.0+-red.svg) ![Platform](https://img.shields.io/badge/platform-iOS-lightgrey.svg) ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg)
+![Titanium](https://img.shields.io/badge/Titanium-13.2.0+-red.svg) ![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-lightgrey.svg) ![License](https://img.shields.io/badge/license-MIT-blue.svg) ![Maintained](https://img.shields.io/badge/Maintained-Yes-green.svg)
 
 
 <p align="center">
@@ -23,7 +23,7 @@ Ti.BorderFX decorates any `Ti.UI.View` (or subclass — buttons, image views, wh
 - [x] Both modes combined
 - [x] Dynamic resize tracking (`Ti.UI.SIZE`, autolayout, `animate()`)
 - [x] Background/foreground resilience
-- [ ] Android support
+- [x] Android support
 
 ## Features
 
@@ -64,6 +64,7 @@ Grab the latest build from the [releases page](https://github.com/YOUR_USERNAME/
 
 ```bash
 {YOUR_PROJECT}/modules/iphone/
+{YOUR_PROJECT}/modules/android/
 ```
 
 ### 3. Configure `tiapp.xml`
@@ -71,6 +72,7 @@ Grab the latest build from the [releases page](https://github.com/YOUR_USERNAME/
 ```xml
 <modules>
     <module platform="iphone">ti.borderfx</module>
+    <module platform="android">ti.borderfx</module>
 </modules>
 
 <ios>
@@ -78,7 +80,7 @@ Grab the latest build from the [releases page](https://github.com/YOUR_USERNAME/
 </ios>
 ```
 
-> **Why iOS 12.0?** The rotating/color-cycling effect is built on `CAGradientLayer`'s conic gradient type (`kCAGradientLayerConic`), introduced in iOS 12.
+> **Why iOS 12.0?** The rotating/color-cycling effect is built on `CAGradientLayer`'s conic gradient type (`kCAGradientLayerConic`), introduced in iOS 12. On Android there is no equivalent floor — `SweepGradient` (Android's conic gradient) is available on every API level Titanium supports.
 
 ---
 
@@ -243,11 +245,25 @@ Removes the effect and stops all internal timers. Call this if the target view i
 
 A quick technical overview, mostly for anyone extending the module:
 
+### iOS
+
 - **Geometry**: a `CAShapeLayer` strokes a rounded-rect path matching the target view's bounds and corner radius; its stroke is used as a `.mask` on a static container layer.
 - **Color**: a `CAGradientLayer` with `type = .conic`, sized to the view's diagonal and centered, sits as a *sublayer inside* the masked container — never masked directly itself, so it can rotate freely without dragging the mask's shape along with it (masking a layer you also rotate moves the mask too, which was an early bug here).
 - **Motion**: no `CABasicAnimation`. Both the beam's dash-phase and the ring's rotation angle are computed manually every frame from elapsed wall-clock time via a single `CADisplayLink`, and written directly to the layers. This makes the effect immune to being interrupted by unrelated animations elsewhere in the same view hierarchy (a real problem with animation-block-based approaches when a screen has its own entrance transitions running).
 - **Resize tracking**: the same `CADisplayLink` tick re-reads the view's bounds and corner radius every frame, cheaply no-oping when nothing changed. During an active Core Animation transition (like `view.animate()`), it reads `view.layer.presentationLayer` instead of the model layer, so the border tracks the *currently displayed* size, not the animation's already-updated final value.
 - **Corner radius**: read from the view's proxy (`[proxy valueForKey:@"borderRadius"]`), not from `view.layer.cornerRadius` — Titanium doesn't always apply `borderRadius` to that property directly, so reading the proxy's own stored value is the reliable path.
+
+### Android
+
+Same design, mapped to the Android graphics stack — and actually simpler, because no mask/container-layer trick is needed:
+
+- **Attachment**: a custom `Drawable` is added to the target view's `ViewOverlay` — it draws *on top of* the existing view without wrapping or re-parenting anything, preserving the decorator contract. It attaches to Titanium's *outer* view (`TiBorderWrapperView` when a border radius is set), and if Titanium re-wraps the view later (e.g. `borderRadius` set after `attach()`), the overlay is moved to the new wrapper automatically.
+- **Geometry**: the border is a rounded-rect `Path`, stroked with a `Paint` (`STROKE`, round caps/joins). `PathMeasure.getLength()` provides the exact perimeter for free.
+- **Color**: the paint's shader is a `SweepGradient` — Android's native conic gradient — centered on the view. Rotation is done by spinning the shader's `localMatrix`, so the border geometry never moves.
+- **Beam**: instead of an animated dash phase, the visible segment is extracted from the outline each frame via `PathMeasure.getSegment()` (split in two when it wraps past the path's start). This sidesteps `DashPathEffect`'s historical flakiness on hardware-accelerated canvases and gives round caps on both ends of the segment.
+- **Motion**: a `Choreographer.FrameCallback` — the direct analog of `CADisplayLink` — recomputes progress from elapsed wall-clock time every vsync. No `ObjectAnimator`, for the same interruption-immunity reasons as iOS.
+- **Resize tracking**: the same frame callback re-reads `getWidth()`/`getHeight()` and the proxy's `borderRadius` property each frame, no-oping cheaply when nothing changed. Titanium's `view.animate()` on Android updates the real layout per frame, so no presentation-layer equivalent is needed.
+- **Corner radius / units**: `borderRadius` and `borderWidth` are converted through `TiDimension`, so they honor your app's `ti.ui.defaultunit` exactly like Titanium's own view properties.
 
 ---
 
@@ -256,7 +272,8 @@ A quick technical overview, mostly for anyone extending the module:
 - **Don't loop a color back to your view's exact `backgroundColor`.** A conic gradient interpolates smoothly between stops, so a chunk of the ring near that stop will visually blend into the card behind it and look like a broken/missing segment. Pick a loop-closing color that's distinct from the background.
 - **`beamLength` gaps are expected in `'beam'`/`'both'` mode.** A short segment covering, say, 25% of the perimeter is naturally out of view for the other 75% of its lap. Use `'rotate'` if you want the border always fully visible.
 - **`borderWidth` and corner radius interact.** A very thick border relative to a small corner radius can visually pinch at the corner — increase the radius or reduce the width if you see that.
-- **iOS 12+ only.** Attaching on an older target silently skips the conic gradient type (falls back to whatever `CAGradientLayer` renders by default for an unset type), so the color-cycling won't look right below iOS 12.
+- **iOS 12+ only (iOS).** Attaching on an older target silently skips the conic gradient type (falls back to whatever `CAGradientLayer` renders by default for an unset type), so the color-cycling won't look right below iOS 12. Android has no such restriction.
+- **Units on Android.** `borderWidth` (and the target's `borderRadius`) go through `TiDimension`, so plain numbers are interpreted in your app's `ti.ui.defaultunit`. If your borders look thinner on Android than on iOS, set `<property name="ti.ui.defaultunit">dp</property>` in `tiapp.xml` (or pass explicit units like `'3dp'`).
 
 ---
 
@@ -264,6 +281,7 @@ A quick technical overview, mostly for anyone extending the module:
 
 - Titanium SDK 13.2.0.GA or later
 - iOS 15.0+ deployment target
+- Android: any API level supported by the Titanium SDK (no extra floor — `SweepGradient`, `ViewOverlay` and `Choreographer` all predate Titanium's minimum)
 
 ---
 
